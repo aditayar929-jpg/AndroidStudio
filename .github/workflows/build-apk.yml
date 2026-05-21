@@ -87,10 +87,12 @@ jobs:
       - name: Grant execution permissions to the Gradle wrapper
         run: chmod +x ./gradlew
 
-      # 🔧 FIXED: Init script ab Kotlin JVM target sahi tareeke se set karega
+      # 🔧 FINAL FIX: Init script with proper import to avoid property resolution error
       - name: Create Gradle init script for compatibility fixes
         run: |
           cat > force-build.gradle << 'EOF'
+          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
           allprojects {
               afterEvaluate {
                   // Force Java 17 source & target compatibility
@@ -106,7 +108,7 @@ jobs:
                   }
                   // Force Kotlin JVM target to 17 via tasks
                   plugins.withId('org.jetbrains.kotlin.jvm') {
-                      tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                      tasks.withType(KotlinCompile).configureEach {
                           kotlinOptions {
                               jvmTarget = '17'
                           }
