@@ -87,12 +87,10 @@ jobs:
       - name: Grant execution permissions to the Gradle wrapper
         run: chmod +x ./gradlew
 
-      # 🔧 FINAL FIX: Init script with proper import to avoid property resolution error
+      # ✅ FINAL FIX: Init script with NO import, uses dynamic property check for KotlinCompile
       - name: Create Gradle init script for compatibility fixes
         run: |
           cat > force-build.gradle << 'EOF'
-          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
           allprojects {
               afterEvaluate {
                   // Force Java 17 source & target compatibility
@@ -106,11 +104,11 @@ jobs:
                   tasks.withType(JavaCompile).configureEach {
                       options.release = 17
                   }
-                  // Force Kotlin JVM target to 17 via tasks
+                  // Force Kotlin JVM target to 17 (no import needed, dynamic check)
                   plugins.withId('org.jetbrains.kotlin.jvm') {
-                      tasks.withType(KotlinCompile).configureEach {
-                          kotlinOptions {
-                              jvmTarget = '17'
+                      tasks.configureEach { task ->
+                          if (task.hasProperty('kotlinOptions')) {
+                              task.kotlinOptions.jvmTarget = '17'
                           }
                       }
                   }
