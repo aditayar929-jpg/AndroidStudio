@@ -65,10 +65,16 @@ jobs:
         run: |
           bun install --frozen-lockfile
 
-      - name: Install the specified NDK and Android SDK CMake (3.22.1)
+      # 🔧 FIX: Replace manual sdkmanager with official android-actions setup
+      - name: Setup Android SDK, NDK 27.1 and CMake 3.22.1
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;27.1.12297006 cmake;3.22.1'
+
+      # Ensure Gradle can find the SDK by writing local.properties
+      - name: Initialize local.properties with SDK path
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.1.12297006" "cmake;3.22.1"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Install higher CMake version (3.31.1) via pip
         run: |
@@ -85,14 +91,12 @@ jobs:
 
       - name: Compile APK
         env:
-          # 限制 Gradle JVM 最大使用 5GB 内存，不开启守护进程以免内存驻留
+          # Limit Gradle JVM memory usage, disable daemon
           GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx5g -XX:MaxMetaspaceSize=1g' -Dorg.gradle.daemon=false"
-          # 限制 CMake 底层的 Ninja 并发数为 2，防止 C++ 编译器吃光内存
-
-          # export CMAKE_BUILD_PARALLEL_LEVEL=2
+          # Limit CMake/Ninja parallelism to prevent OOM
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
-          # 使用 --max-workers=2 限制模块并发
+          # --max-workers=2 limits module concurrency
           gradle ${{ github.event.inputs.build_type }} --build-cache --max-workers=2
 
       - name: Upload app-arm64-v8a-release.apk
