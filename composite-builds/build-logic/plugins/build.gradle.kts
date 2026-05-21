@@ -62,5 +62,9 @@ gradlePlugin {
       id = "com.itsaky.androidide.build.lexergenerator"
       implementationClass = "com.itsaky.androidide.plugins.LexerGeneratorPlugin"
     }
+    create("build-logic.root-project") {
+      id = "build-logic.root-project"
+      implementationClass = "com.itsaky.androidide.plugins.RootProjectPlugin"
+    }
   }
 }
