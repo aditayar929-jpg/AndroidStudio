@@ -65,13 +65,11 @@ jobs:
         run: |
           bun install --frozen-lockfile
 
-      # 🔧 FIX: Replace manual sdkmanager with official android-actions setup
       - name: Setup Android SDK, NDK 27.1 and CMake 3.22.1
         uses: android-actions/setup-android@v3
         with:
           packages: 'ndk;27.1.12297006 cmake;3.22.1'
 
-      # Ensure Gradle can find the SDK by writing local.properties
       - name: Initialize local.properties with SDK path
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -89,15 +87,45 @@ jobs:
       - name: Grant execution permissions to the Gradle wrapper
         run: chmod +x ./gradlew
 
+      # 🔧 FIX: Init script to force Java 17 compatibility & fix dependency issues
+      - name: Create Gradle init script for compatibility fixes
+        run: |
+          cat > force-build.gradle << 'EOF'
+          allprojects {
+              afterEvaluate {
+                  // Force Java 17 source & target compatibility
+                  plugins.withId('java') {
+                      java {
+                          sourceCompatibility = JavaVersion.VERSION_17
+                          targetCompatibility = JavaVersion.VERSION_17
+                      }
+                  }
+                  // Force JavaCompile tasks to use release 17
+                  tasks.withType(JavaCompile).configureEach {
+                      options.release = 17
+                  }
+                  // Force Kotlin JVM target to 17
+                  plugins.withId('org.jetbrains.kotlin.jvm') {
+                      kotlin {
+                          jvmTarget = '17'
+                      }
+                  }
+                  // Fix bad group ID for gradle-tooling-api
+                  configurations.all {
+                      resolutionStrategy.dependencySubstitution {
+                          substitute module('android.zero.studio.gradle:gradle-tooling-api') with module('org.gradle:gradle-tooling-api:9.5.1')
+                      }
+                  }
+              }
+          }
+          EOF
+
       - name: Compile APK
         env:
-          # Limit Gradle JVM memory usage, disable daemon
           GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx5g -XX:MaxMetaspaceSize=1g' -Dorg.gradle.daemon=false"
-          # Limit CMake/Ninja parallelism to prevent OOM
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
-          # --max-workers=2 limits module concurrency
-          gradle ${{ github.event.inputs.build_type }} --build-cache --max-workers=2
+          gradle ${{ github.event.inputs.build_type }} --build-cache --max-workers=2 --init-script force-build.gradle
 
       - name: Upload app-arm64-v8a-release.apk
         if: github.event.inputs.build_type == 'assembleRelease' || github.event.inputs.build_type == 'assemble'
