@@ -87,7 +87,7 @@ jobs:
       - name: Grant execution permissions to the Gradle wrapper
         run: chmod +x ./gradlew
 
-      # 🔧 FIX: Init script to force Java 17 compatibility & fix dependency issues
+      # 🔧 FIXED: Init script ab Kotlin JVM target sahi tareeke se set karega
       - name: Create Gradle init script for compatibility fixes
         run: |
           cat > force-build.gradle << 'EOF'
@@ -104,10 +104,12 @@ jobs:
                   tasks.withType(JavaCompile).configureEach {
                       options.release = 17
                   }
-                  // Force Kotlin JVM target to 17
+                  // Force Kotlin JVM target to 17 via tasks
                   plugins.withId('org.jetbrains.kotlin.jvm') {
-                      kotlin {
-                          jvmTarget = '17'
+                      tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                          kotlinOptions {
+                              jvmTarget = '17'
+                          }
                       }
                   }
                   // Fix bad group ID for gradle-tooling-api
