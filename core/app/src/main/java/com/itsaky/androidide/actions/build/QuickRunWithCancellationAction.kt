@@ -35,6 +35,7 @@ import com.itsaky.androidide.preferences.internal.BuildPreferences
 import com.itsaky.androidide.projects.android.AndroidModule
 import com.itsaky.androidide.projects.builder.BuildService
 import com.itsaky.androidide.resources.R
+import com.itsaky.androidide.tooling.api.messages.ExecutionRequest
 import com.itsaky.androidide.tooling.api.messages.result.TaskExecutionResult
 import com.itsaky.androidide.tooling.api.models.BasicAndroidVariantMetadata
 import com.itsaky.androidide.utils.ApkInstaller
@@ -62,6 +63,21 @@ class QuickRunWithCancellationAction(context: Context, override val order: Int) 
   companion object {
 
     private val log = LoggerFactory.getLogger(QuickRunWithCancellationAction::class.java)
+    private const val PROP_USE_TOOLING_EXECUTE = "androidide.use.tooling.execute"
+  }
+
+  private fun useToolingExecute(): Boolean {
+    return System.getProperty(PROP_USE_TOOLING_EXECUTE, "false").toBoolean()
+  }
+
+  private fun toTaskExecutionResult(
+      exec: com.itsaky.androidide.tooling.api.messages.result.ExecutionResult
+  ): TaskExecutionResult {
+    return if (exec.isSuccessful) {
+      TaskExecutionResult.SUCCESS
+    } else {
+      TaskExecutionResult(false, exec.failure, exec.diagnostics)
+    }
   }
 
   init {
@@ -170,7 +186,23 @@ class QuickRunWithCancellationAction(context: Context, override val order: Int) 
           }
           activity.saveAllResult()
 
-          val result = withContext(Dispatchers.IO) { buildService.executeTasks(taskName).get() }
+          val result =
+              withContext(Dispatchers.IO) {
+                if (useToolingExecute()) {
+                  val request = ExecutionRequest(tasks = listOf(taskName))
+                  log.info("Executing quick-run task via tooling execute: requestId={} task={}", request.requestId, taskName)
+                  val exec = buildService.execute(request).get()
+                  log.info(
+                      "Quick-run tooling execution finished: requestId={} success={} failure={}",
+                      exec.requestId,
+                      exec.isSuccessful,
+                      exec.failure,
+                  )
+                  toTaskExecutionResult(exec)
+                } else {
+                  buildService.executeTasks(taskName).get()
+                }
+              }
 
           log.debug("Task execution result: {}", result)
 
@@ -229,7 +261,11 @@ class QuickRunWithCancellationAction(context: Context, override val order: Int) 
       variant: BasicAndroidVariantMetadata,
   ) {
     if (result == null || !result.isSuccessful) {
-      log.debug("Cannot install APK. Task execution failed.")
+      log.debug(
+          "Cannot install APK. Task execution failed. failure={} diagnostics={}",
+          result?.failure,
+          result?.diagnostics,
+      )
       return
     }
 

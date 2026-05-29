@@ -24,28 +24,28 @@ import com.itsaky.androidide.tooling.api.models.BasicAndroidVariantMetadata
 import com.itsaky.androidide.tooling.api.models.params.StringParameter
 import java.io.File
 import java.util.concurrent.CompletableFuture
-import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
-import org.eclipse.lsp4j.jsonrpc.services.JsonSegment
+import com.zerostudio.tooling.buildgrpc.customapi.rpc.BinaryRpcRequest
+import com.zerostudio.tooling.buildgrpc.customapi.rpc.BinaryRpcSegment
 
 /**
  * Model for an Android project/module.
  *
  * @author Akash Yadav
  */
-@JsonSegment("android")
+@BinaryRpcSegment("android")
 interface IAndroidProject : IModuleProject {
 
   /** Get the variant that was configured/selected while building the model for this project. */
-  @JsonRequest fun getConfiguredVariant(): CompletableFuture<String>
+  @BinaryRpcRequest fun getConfiguredVariant(): CompletableFuture<String>
 
   /** Get the metadata about all variants of this Android project. */
-  @JsonRequest fun getVariants(): CompletableFuture<List<BasicAndroidVariantMetadata>>
+  @BinaryRpcRequest fun getVariants(): CompletableFuture<List<BasicAndroidVariantMetadata>>
 
   /** Get the metadata about the variant with the given name. */
-  @JsonRequest fun getVariant(param: StringParameter): CompletableFuture<AndroidVariantMetadata?>
+  @BinaryRpcRequest fun getVariant(param: StringParameter): CompletableFuture<AndroidVariantMetadata?>
 
   /** Get the boot classpaths for this Android project. */
-  @JsonRequest fun getBootClasspaths(): CompletableFuture<Collection<File>>
+  @BinaryRpcRequest fun getBootClasspaths(): CompletableFuture<Collection<File>>
 
   /**
    * Get the map of libraries. Each entry is a unique key representing the library, and allowing to
@@ -53,17 +53,17 @@ interface IAndroidProject : IModuleProject {
    *
    * @param variant The name of the variant for which the libraries will be fetched.
    */
-  @JsonRequest fun getLibraryMap(): CompletableFuture<Map<String, DefaultLibrary>>
+  @BinaryRpcRequest fun getLibraryMap(): CompletableFuture<Map<String, DefaultLibrary>>
 
   /**
    * Get the main source set container for this project.
    *
    * @return The main source set container or `null` if it is unavailable.
    */
-  @JsonRequest fun getMainSourceSet(): CompletableFuture<DefaultSourceSetContainer?>
+  @BinaryRpcRequest fun getMainSourceSet(): CompletableFuture<DefaultSourceSetContainer?>
 
   /** Get the lint check jars for this project. */
-  @JsonRequest fun getLintCheckJars(): CompletableFuture<List<File>>
+  @BinaryRpcRequest fun getLintCheckJars(): CompletableFuture<List<File>>
 
   @Suppress("unused")
   companion object {

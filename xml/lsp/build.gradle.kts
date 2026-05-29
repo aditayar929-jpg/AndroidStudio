@@ -32,6 +32,7 @@ dependencies {
 
   implementation(libs.common.editor)
   implementation(libs.common.utilcode)
+  implementation(libs.common.lsp4j.jsonrpc)
   implementation(libs.androidide.ts)
   implementation(libs.androidide.ts.xml)
 

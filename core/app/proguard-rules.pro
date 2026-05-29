@@ -113,19 +113,6 @@
     @com.google.auto.service.AutoService <methods>;
 }
 
-# Keep these for LSP & JsonRPC working properly
--keep class org.eclipse.lsp4j.* { *; }
--keep class org.eclipse.lsp4j.services.* { *; }
--keep class org.eclipse.lsp4j.jsonrpc.messages.* { *; }
--keep interface org.eclipse.lsp4j.** { *; }
--keep enum org.eclipse.lsp4j.** { *; }
--dontwarn org.eclipse.lsp4j.**
-
--keepclassmembers enum org.eclipse.lsp4j.** {
-   public static **[] values();
-   public static ** valueOf(java.lang.String);
-}
-
 -keep class com.facebook.ktfmt.** { *; }
 -keep class org.javacs.kt.** { *; }
 

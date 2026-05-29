@@ -48,6 +48,7 @@ import com.itsaky.androidide.lsp.models.DocumentLink
 import com.itsaky.androidide.lsp.models.DocumentDiagnosticParams
 import com.itsaky.androidide.lsp.models.DocumentDiagnosticReport
 import com.itsaky.androidide.lsp.models.ExecuteCommandParams
+import com.itsaky.androidide.lsp.models.ExecuteCommandOptions
 import com.itsaky.androidide.lsp.models.DocumentSymbolsResult
 import com.itsaky.androidide.lsp.models.ExpandSelectionParams
 import com.itsaky.androidide.lsp.models.FoldingRange
@@ -288,12 +289,31 @@ interface ILanguageServer {
   }
 
   /**
+   * Advertise server-side commands supported by workspace/executeCommand.
+   *
+   * Implementations should return the same command ids that they are able to handle in
+   * [executeCommand]. Clients use this as the core API equivalent of the LSP
+   * `executeCommandProvider` server capability.
+   */
+  fun executeCommandOptions(): ExecuteCommandOptions {
+    return ExecuteCommandOptions()
+  }
+
+  /** Returns whether this server currently advertises support for [command]. */
+  fun canExecuteCommand(command: String): Boolean {
+    return executeCommandOptions().commands.contains(command)
+  }
+
+  /**
    * Execute a workspace command on server side (LSP: workspace/executeCommand).
    *
-   * Implementations should return any protocol-compatible value (including `null`).
+   * Implementations should perform the command, optionally call [client] to send follow-up requests
+   * such as workspace/applyEdit, and return any protocol-compatible value (including `null`).
    */
   suspend fun executeCommand(params: ExecuteCommandParams): Any? {
-    return null
+    throw UnsupportedOperationException(
+        "Language server '${serverId ?: "<unknown>"}' does not support workspace/executeCommand command '${params.command}'."
+    )
   }
 
   /**

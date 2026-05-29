@@ -25,6 +25,16 @@ plugins {
   id("org.jetbrains.kotlin.jvm")
 }
 
+java {
+  toolchain {
+    languageVersion.set(JavaLanguageVersion.of(17))
+  }
+}
+
+kotlin {
+  jvmToolchain(17)
+}
+
 tasks.withType<Jar> {
   manifest { attributes("Main-Class" to "${BuildConfig.packageName}.tooling.impl.Main") }
 }
@@ -59,6 +69,7 @@ dependencies {
   kapt(libs.google.auto.service)
 
   api(projects.tooling.api)
+  api(projects.tooling.reapiProto)
 
   implementation(projects.utilities.buildInfo)
   implementation(projects.utilities.shared)
@@ -68,6 +79,10 @@ dependencies {
   implementation(libs.xml.xercesImpl)
   implementation(libs.xml.apis)
   implementation(libs.tooling.gradleApi)
+  implementation(libs.common.lsp4j.jsonrpc)
+  implementation(libs.common.org.eclipse.lsp4j)
+  implementation(libs.google.gson)
+  implementation(projects.tooling.buildGrpc)
 
   runtimeOnly(libs.tooling.slf4j)
 }

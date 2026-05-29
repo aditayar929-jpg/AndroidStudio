@@ -32,6 +32,8 @@ data class ServerCapabilities(
     var executeCommandAvailable: Boolean,
     var supportedCommands: List<String>,
     var codeActionResolveAvailable: Boolean,
+    var executeCommandProvider: ExecuteCommandOptions? =
+        if (executeCommandAvailable) ExecuteCommandOptions(supportedCommands) else null,
 ) {
   constructor() : this(false, false, false, false, false, false, false, false, emptyList(), false)
 }

@@ -20,8 +20,8 @@ package com.itsaky.androidide.tooling.api
 import com.itsaky.androidide.tooling.api.models.params.StringParameter
 import com.itsaky.androidide.tooling.api.models.result.SelectProjectResult
 import java.util.concurrent.CompletableFuture
-import org.eclipse.lsp4j.jsonrpc.services.JsonDelegate
-import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
+import com.zerostudio.tooling.buildgrpc.customapi.rpc.BinaryRpcDelegate
+import com.zerostudio.tooling.buildgrpc.customapi.rpc.BinaryRpcRequest
 
 /**
  * Transmiting the whole project models over the communication streams results in a bad performance.
@@ -34,7 +34,7 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
  *
  * With LSP4J's JsonRpc implementation, it is not possible to create a delegate method in a service
  * which can accept parameters. What this means is that if a method is annotated with
- * [JsonDelegate][org.eclipse.lsp4j.jsonrpc.services.JsonDelegate], it cannot accept any parameters.
+ * [JsonDelegate][com.zerostudio.tooling.buildgrpc.customapi.rpc.BinaryRpcDelegate], it cannot accept any parameters.
  *
  * As we cannot send the whole project model to the client for the reasons mentioned above, we use
  * another approach in this implementation. The client first selects the project it wants to fetch
@@ -52,17 +52,17 @@ interface IProjectQueries {
    * @param param A [StringParameter] with the project's path as the value. If the value is an empty
    *   string, the root project will be selected.
    */
-  @JsonRequest fun selectProject(param: StringParameter): CompletableFuture<SelectProjectResult>
+  @BinaryRpcRequest fun selectProject(param: StringParameter): CompletableFuture<SelectProjectResult>
 
   /** Get the type of selected project. */
-  @JsonRequest fun getType(): CompletableFuture<ProjectType>
+  @BinaryRpcRequest fun getType(): CompletableFuture<ProjectType>
 
   /** Get the selected project as Gradle project. */
-  @JsonDelegate fun asGradleProject(): IGradleProject
+  @BinaryRpcDelegate fun asGradleProject(): IGradleProject
 
   /** Get the selected project as Android project. */
-  @JsonDelegate fun asAndroidProject(): IAndroidProject
+  @BinaryRpcDelegate fun asAndroidProject(): IAndroidProject
 
   /** Get the selected project as Java project. */
-  @JsonDelegate fun asJavaProject(): IJavaProject
+  @BinaryRpcDelegate fun asJavaProject(): IJavaProject
 }

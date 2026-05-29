@@ -17,10 +17,19 @@
 
 package com.itsaky.androidide.tooling.api.messages.result
 
+
 /**
  * Result received after an initialize project request.
  *
  * @param isSuccessful Whether the project initialization was successful.
  * @author Akash Yadav
  */
-class InitializeResult(val isSuccessful: Boolean, val failure: TaskExecutionResult.Failure? = null)
+class InitializeResult(
+    val isSuccessful: Boolean,
+    val failure: TaskExecutionResult.Failure? = null,
+    val requestId: String? = null,
+    val negotiatedOperationTypes: Set<String> = emptySet(),
+    val supportsModelSnapshot: Boolean = false,
+    val supportsQueryService: Boolean = false,
+    val supportsPhasedAction: Boolean = false,
+)

@@ -46,6 +46,18 @@ object Main {
 
   @Volatile var future: Future<Void?>? = null
 
+  @Volatile var maxProgressEventsPerSecond: Int = Int.MAX_VALUE
+
+  @JvmStatic
+  fun configureProgressDispatch(maxEventsPerSecond: Int?) {
+    maxProgressEventsPerSecond =
+        when {
+          maxEventsPerSecond == null -> Int.MAX_VALUE
+          maxEventsPerSecond <= 0 -> Int.MAX_VALUE
+          else -> maxEventsPerSecond
+        }
+  }
+
   @JvmStatic
   fun main(args: Array<String>) {
     // disable the JVM std.err appender
@@ -127,7 +139,10 @@ object Main {
   }
 
   @Suppress("NewApi")
-  fun finalizeLauncher(launcher: ConfigurableLauncher<*>) {
+  fun finalizeLauncher(
+      launcher: ConfigurableLauncher<*>,
+      requestedTypes: Set<OperationType> = emptySet(),
+  ) {
     val out = LoggingOutputStream()
     launcher.setStandardError(out)
     launcher.setStandardOutput(out)
@@ -183,7 +198,13 @@ object Main {
     //    "-Dkotlin.daemon.jvm.options=-Xmx2g"
     // );
 
-    launcher.addProgressListener(ForwardingProgressListener(), progressUpdateTypes())
+    val progressTypes =
+        if (requestedTypes.isEmpty()) {
+          progressUpdateTypes()
+        } else {
+          requestedTypes
+        }
+    launcher.addProgressListener(ForwardingProgressListener(), progressTypes)
 
     client?.let { c ->
       try {
@@ -199,8 +220,10 @@ object Main {
 
   fun progressUpdateTypes(): Set<OperationType> {
     val types = HashSet<OperationType>()
-    // AndroidIDE currently does not handle any other type of events
+    // Keep this aligned with Gradle Tooling API 9.5.1 operation coverage.
+    // Unknown progress subtypes are still forwarded through generic Start/Finish/Status mapping.
     types.add(OperationType.TASK)
+    types.add(OperationType.TEST)
     types.add(OperationType.PROJECT_CONFIGURATION)
     types.add(OperationType.FILE_DOWNLOAD)
     types.add(OperationType.TRANSFORM)

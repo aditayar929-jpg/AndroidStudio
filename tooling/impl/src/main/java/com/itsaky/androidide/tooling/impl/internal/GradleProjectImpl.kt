@@ -19,6 +19,8 @@ package com.itsaky.androidide.tooling.impl.internal
 
 import com.itsaky.androidide.tooling.api.IGradleProject
 import com.itsaky.androidide.tooling.api.ProjectType
+import com.itsaky.androidide.tooling.api.models.BuildEnvironmentModel
+import com.itsaky.androidide.tooling.api.models.GradleBuildModel
 import com.itsaky.androidide.tooling.api.models.GradleTask
 import com.itsaky.androidide.tooling.api.models.ProjectMetadata
 import java.io.Serializable
@@ -26,7 +28,11 @@ import java.util.concurrent.CompletableFuture
 import org.gradle.tooling.model.GradleProject
 
 /** @author Akash Yadav */
-internal open class GradleProjectImpl(protected val gradleProject: GradleProject) :
+internal open class GradleProjectImpl(
+    protected val gradleProject: GradleProject,
+    private val buildEnvironment: BuildEnvironmentModel? = null,
+    private val gradleBuild: GradleBuildModel? = null,
+) :
     IGradleProject, Serializable {
 
   private val serialVersionUID = 1L
@@ -64,4 +70,34 @@ internal open class GradleProjectImpl(protected val gradleProject: GradleProject
       }
     }
   }
+
+  override fun getBuildEnvironment(): CompletableFuture<BuildEnvironmentModel> {
+    return CompletableFuture.completedFuture(
+        buildEnvironment
+            ?: BuildEnvironmentModel(
+                buildId = null,
+                gradle =
+                    com.itsaky.androidide.tooling.api.models.GradleEnvironmentModel(
+                        gradleVersion = "unknown",
+                        gradleUserHome = null,
+                    ),
+                java = null,
+                versionInfo = null,
+            )
+    )
+  }
+
+  override fun getGradleBuild(): CompletableFuture<GradleBuildModel> {
+    return CompletableFuture.completedFuture(
+        gradleBuild
+            ?: GradleBuildModel(
+                buildId = null,
+                rootProjectPath = gradleProject.path,
+                projectPaths = listOf(gradleProject.path),
+                includedBuildIds = emptyList(),
+                editableBuildIds = emptyList(),
+            )
+    )
+  }
+
 }

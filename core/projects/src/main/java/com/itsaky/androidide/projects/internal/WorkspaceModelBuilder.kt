@@ -52,10 +52,13 @@ internal object WorkspaceModelBuilder {
           when (project.getType().get()) {
             ProjectType.Gradle -> transform(project.asGradleProject())
             ProjectType.Android -> transform(project.asAndroidProject())
-            else ->
-                throw IllegalStateException(
-                    "Root project must be either an Android project or a Gradle project"
-                )
+            ProjectType.Java -> transform(project.asJavaProject())
+            ProjectType.Unknown -> {
+              log.warn(
+                  "Root project type is UNKNOWN, falling back to Gradle root model transformation"
+              )
+              transform(project.asGradleProject())
+            }
           }
 
       return WorkspaceImpl(
@@ -149,14 +152,34 @@ internal object WorkspaceModelBuilder {
       "Selection failed for project '${moduleMetadata.projectPath}' but it is included in all projects."
     }
 
-    val type = root.getType().get() ?: throw java.lang.IllegalStateException("Invalid module data")
+    val selectedGradleProject = root.asGradleProject()
+    val type = selectedGradleProject.getMetadata().get().type
 
     return when (type) {
       ProjectType.Gradle,
-      ProjectType.Unknown -> transform(root.asGradleProject())
+      ProjectType.Unknown -> transform(selectedGradleProject)
 
-      ProjectType.Android -> transform(root.asAndroidProject())
-      ProjectType.Java -> transform(root.asJavaProject())
+      ProjectType.Android ->
+          runCatching { transform(root.asAndroidProject()) }
+              .getOrElse {
+                log.warn(
+                    "Failed to transform Android module '{}' as Android model, falling back to Gradle model",
+                    moduleMetadata.projectPath,
+                    it,
+                )
+                transform(selectedGradleProject)
+              }
+
+      ProjectType.Java ->
+          runCatching { transform(root.asJavaProject()) }
+              .getOrElse {
+                log.warn(
+                    "Failed to transform Java module '{}' as Java model, falling back to Gradle model",
+                    moduleMetadata.projectPath,
+                    it,
+                )
+                transform(selectedGradleProject)
+              }
     }
   }
 }

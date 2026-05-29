@@ -369,7 +369,7 @@ aapt2-aaptcompiler = { module = "com.android.tools.build:aaptcompiler", version.
 tooling-builder = { module = "com.android.tools.build:builder", version.ref = "agp-tooling" }
 tooling-builderModel = { module = "com.android.tools.build:builder-model", version.ref = "agp-tooling" }
 tooling-builderTestApi = { module = "com.android.tools.build:builder-test-api", version.ref = "agp-tooling" }
-tooling-gradleApi = { module = "android.zero.studio.gradle:gradle-tooling-api", version.ref = "gradle-tooling" }
+tooling-gradleApi = { module = "org.gradle:gradle-tooling-api", version.ref = "gradle-tooling" }
 tooling-slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j-api" }
 
 # use logback-core from logback-android instead
@@ -504,6 +504,7 @@ grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "ioGrpcVersion
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "ioGrpcVersion" }
 grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "ioGrpcVersion" }
 grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "ioGrpcStubVersion" }
+
 
 # 其它sdk
 com-h2database-h2 = { module = "com.h2database:h2", version = "1.4.200" }

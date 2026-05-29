@@ -59,7 +59,13 @@ class RootModelBuilder(initializationParams: InitializeProjectParams) :
           ideaModules.find { it.gradleProject.parent == null }
               ?: throw ModelBuilderException("Unable to find root project")
 
-      val rootProjectVersions = getAndroidVersions(rootModule, controller)
+      val rootProjectVersions =
+          if (isGradleDslProject(rootModule.gradleProject.projectDirectory) &&
+              hasAndroidGradlePlugin(rootModule.gradleProject.projectDirectory)) {
+            getAndroidVersions(rootModule, controller)
+          } else {
+            null
+          }
 
       val syncIssues = hashSetOf<DefaultSyncIssue>()
       val syncIssueReporter = ISyncIssueReporter {
@@ -86,7 +92,8 @@ class RootModelBuilder(initializationParams: InitializeProjectParams) :
                     )
                 )
           } else {
-            GradleProjectModelBuilder(initializationParams).build(rootModule.gradleProject)
+            GradleProjectModelBuilder(initializationParams)
+                .build(GradleProjectModelBuilderParams(controller, rootModule.gradleProject))
           }
 
       val projects = ideaModules.map { ideaModule ->

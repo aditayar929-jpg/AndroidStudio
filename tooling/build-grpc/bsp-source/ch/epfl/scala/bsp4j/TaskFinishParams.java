@@ -1,0 +1,144 @@
+package ch.epfl.scala.bsp4j;
+
+import com.google.gson.annotations.JsonAdapter;
+import org.eclipse.lsp4j.jsonrpc.json.adapters.JsonElementTypeAdapter;
+import org.eclipse.lsp4j.jsonrpc.util.Preconditions;
+import org.eclipse.lsp4j.jsonrpc.util.ToStringBuilder;
+import org.eclipse.lsp4j.jsonrpc.validation.NonNull;
+
+@SuppressWarnings("all")
+public class TaskFinishParams {
+  @NonNull private TaskId taskId;
+
+  private String originId;
+
+  private Long eventTime;
+
+  private String message;
+
+  @NonNull private StatusCode status;
+
+  private String dataKind;
+
+  @JsonAdapter(JsonElementTypeAdapter.Factory.class)
+  private Object data;
+
+  public TaskFinishParams(@NonNull final TaskId taskId, @NonNull final StatusCode status) {
+    this.taskId = taskId;
+    this.status = status;
+  }
+
+  @NonNull
+  public TaskId getTaskId() {
+    return this.taskId;
+  }
+
+  public void setTaskId(@NonNull final TaskId taskId) {
+    this.taskId = Preconditions.checkNotNull(taskId, "taskId");
+  }
+
+  public String getOriginId() {
+    return this.originId;
+  }
+
+  public void setOriginId(final String originId) {
+    this.originId = originId;
+  }
+
+  public Long getEventTime() {
+    return this.eventTime;
+  }
+
+  public void setEventTime(final Long eventTime) {
+    this.eventTime = eventTime;
+  }
+
+  public String getMessage() {
+    return this.message;
+  }
+
+  public void setMessage(final String message) {
+    this.message = message;
+  }
+
+  @NonNull
+  public StatusCode getStatus() {
+    return this.status;
+  }
+
+  public void setStatus(@NonNull final StatusCode status) {
+    this.status = Preconditions.checkNotNull(status, "status");
+  }
+
+  public String getDataKind() {
+    return this.dataKind;
+  }
+
+  public void setDataKind(final String dataKind) {
+    this.dataKind = dataKind;
+  }
+
+  public Object getData() {
+    return this.data;
+  }
+
+  public void setData(final Object data) {
+    this.data = data;
+  }
+
+  @Override
+  public String toString() {
+    ToStringBuilder b = new ToStringBuilder(this);
+    b.add("taskId", this.taskId);
+    b.add("originId", this.originId);
+    b.add("eventTime", this.eventTime);
+    b.add("message", this.message);
+    b.add("status", this.status);
+    b.add("dataKind", this.dataKind);
+    b.add("data", this.data);
+    return b.toString();
+  }
+
+  @Override
+  public boolean equals(final Object obj) {
+    if (this == obj) return true;
+    if (obj == null) return false;
+    if (getClass() != obj.getClass()) return false;
+    TaskFinishParams other = (TaskFinishParams) obj;
+    if (this.taskId == null) {
+      if (other.taskId != null) return false;
+    } else if (!this.taskId.equals(other.taskId)) return false;
+    if (this.originId == null) {
+      if (other.originId != null) return false;
+    } else if (!this.originId.equals(other.originId)) return false;
+    if (this.eventTime == null) {
+      if (other.eventTime != null) return false;
+    } else if (!this.eventTime.equals(other.eventTime)) return false;
+    if (this.message == null) {
+      if (other.message != null) return false;
+    } else if (!this.message.equals(other.message)) return false;
+    if (this.status == null) {
+      if (other.status != null) return false;
+    } else if (!this.status.equals(other.status)) return false;
+    if (this.dataKind == null) {
+      if (other.dataKind != null) return false;
+    } else if (!this.dataKind.equals(other.dataKind)) return false;
+    if (this.data == null) {
+      if (other.data != null) return false;
+    } else if (!this.data.equals(other.data)) return false;
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    final int prime = 31;
+    int result = 1;
+    result = prime * result + ((this.taskId == null) ? 0 : this.taskId.hashCode());
+    result = prime * result + ((this.originId == null) ? 0 : this.originId.hashCode());
+    result = prime * result + ((this.eventTime == null) ? 0 : this.eventTime.hashCode());
+    result = prime * result + ((this.message == null) ? 0 : this.message.hashCode());
+    result = prime * result + ((this.status == null) ? 0 : this.status.hashCode());
+    result = prime * result + ((this.dataKind == null) ? 0 : this.dataKind.hashCode());
+    return prime * result + ((this.data == null) ? 0 : this.data.hashCode());
+  }
+}

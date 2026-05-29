@@ -18,7 +18,9 @@
 package com.itsaky.androidide.lsp.kotlin
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.itsaky.androidide.actions.ActionItem
 import com.itsaky.androidide.actions.ActionsRegistry
 import com.itsaky.androidide.actions.locations.CodeActionsMenu
@@ -41,6 +43,8 @@ import com.itsaky.androidide.lsp.models.DidCloseTextDocumentParams
 import com.itsaky.androidide.lsp.models.DidOpenTextDocumentParams
 import com.itsaky.androidide.lsp.models.DidSaveTextDocumentParams
 import com.itsaky.androidide.lsp.models.DocumentChange
+import com.itsaky.androidide.lsp.models.ExecuteCommandOptions
+import com.itsaky.androidide.lsp.models.ExecuteCommandParams as IdeExecuteCommandParams
 import com.itsaky.androidide.lsp.models.ExpandSelectionParams
 import com.itsaky.androidide.lsp.models.FormatCodeParams
 import com.itsaky.androidide.lsp.models.MarkupContent
@@ -77,7 +81,7 @@ import org.eclipse.lsp4j.CompletionItemCapabilities
 import org.eclipse.lsp4j.DidChangeConfigurationParams
 import org.eclipse.lsp4j.DocumentFormattingParams
 import org.eclipse.lsp4j.ExecuteCommandCapabilities
-import org.eclipse.lsp4j.ExecuteCommandParams
+import org.eclipse.lsp4j.ExecuteCommandParams as LspExecuteCommandParams
 import org.eclipse.lsp4j.FormattingOptions
 import org.eclipse.lsp4j.HoverCapabilities
 import org.eclipse.lsp4j.HoverParams
@@ -130,9 +134,21 @@ class KotlinLanguageServerImpl(
     private val completionConverter = KotlinCompletionConverter()
     private val initLock = Any()
 
+    @Volatile
+    private var remoteExecuteCommandOptions = ExecuteCommandOptions(KNOWN_WORKSPACE_COMMANDS)
+
     companion object {
         const val SERVER_ID = "kotlin-lsp"
         private val log = Logger.instance("KotlinLanguageServerImpl")
+
+        private val KNOWN_WORKSPACE_COMMANDS =
+            listOf(
+                "convertJavaToKotlin",
+                "kotlin/jarClassContents",
+                "kotlinRefreshBazelClassPath",
+                "kotestTestsInfo",
+                "textDocument/codeAction",
+            )
     }
 
     /**
@@ -176,13 +192,8 @@ class KotlinLanguageServerImpl(
 
         override fun applyEdit(params: ApplyWorkspaceEditParams): CompletableFuture<ApplyWorkspaceEditResponse> {
             return try {
-                val ideDocumentChanges = mutableListOf<DocumentChange>()
-                params.edit.changes?.forEach { (uri, edits) ->
-                    val path = File(URI(uri)).toPath()
-                    val ideEdits = edits.map { it.toIde() }
-                    ideDocumentChanges.add(DocumentChange(path, ideEdits))
-                }
-                val success = client?.applyWorkspaceEdit(WorkspaceEdit(ideDocumentChanges)) ?: false
+                val edit = params.edit.toIdeWorkspaceEdit()
+                val success = client?.applyWorkspaceEdit(edit) ?: false
                 CompletableFuture.completedFuture(ApplyWorkspaceEditResponse(success))
             } catch (e: Exception) {
                 log.error("Failed to apply workspace edit", e)
@@ -279,6 +290,7 @@ class KotlinLanguageServerImpl(
                     signatureHelp = SignatureHelpCapabilities()
                 }
                 this.workspace = WorkspaceClientCapabilities().apply {
+                    applyEdit = true
                     executeCommand = ExecuteCommandCapabilities(true)
                 }
             }
@@ -292,7 +304,9 @@ class KotlinLanguageServerImpl(
 
         runBlocking {
             try {
-                requireServer().initialize(initParams).await()
+                val initializeResult = requireServer().initialize(initParams).await()
+                remoteExecuteCommandOptions =
+                    initializeResult?.capabilities?.executeCommandProvider.toIdeExecuteCommandOptions()
                 requireServer().initialized(InitializedParams())
                 isInitialized = true
                 lastInitError = null
@@ -583,29 +597,209 @@ class KotlinLanguageServerImpl(
                 params.newName
             )
             val result = requireServer().textDocumentService.rename(req).await()
-            
-            val ideDocumentChanges = mutableListOf<DocumentChange>()
-            result?.changes?.forEach { (uri, edits) ->
-                val path = File(URI(uri)).toPath()
-                val ideEdits = edits.map { it.toIde() }
-                ideDocumentChanges.add(DocumentChange(path, ideEdits))
-            }
-            WorkspaceEdit(ideDocumentChanges)
+            result.toIdeWorkspaceEdit()
         } catch (e: Exception) {
             WorkspaceEdit()
         }
     }
 
-    fun executeWorkspaceCommand(commandName: String, arguments: List<Any>): JsonElement? {
-        if (!ensureInitialized()) return null
+    override fun executeCommandOptions(): ExecuteCommandOptions {
+        return remoteExecuteCommandOptions.copy(commands = remoteExecuteCommandOptions.commands.distinct())
+    }
+
+    override fun canExecuteCommand(command: String): Boolean {
+        return executeCommandOptions().commands.contains(command)
+    }
+
+    override suspend fun executeCommand(params: IdeExecuteCommandParams): Any? = withContext(Dispatchers.IO) {
+        val result = executeRemoteWorkspaceCommand(
+            commandName = params.command,
+            arguments = params.arguments.orEmpty(),
+            workDoneToken = params.workDoneToken,
+        )
+        result.toIdeWorkspaceEditOrNull() ?: result
+    }
+
+    fun executeWorkspaceCommand(commandName: String, arguments: List<Any?>): JsonElement? {
         return try {
-            val params = ExecuteCommandParams(commandName, arguments)
-            val result = requireServer().workspaceService.executeCommand(params).get()
+            val result =
+                runBlocking(Dispatchers.IO) {
+                    executeRemoteWorkspaceCommand(commandName, arguments, workDoneToken = null)
+                }
+            applyWorkspaceEditResult(result)
             gson.toJsonTree(result)
         } catch (e: Exception) {
             log.error("Failed to execute workspace command: $commandName", e)
             null
         }
+    }
+
+    private suspend fun executeRemoteWorkspaceCommand(
+        commandName: String,
+        arguments: List<Any?>,
+        workDoneToken: Any?,
+    ): Any? {
+        if (!ensureInitialized()) {
+            throw IllegalStateException("Kotlin LSP is not initialized. Cannot execute command '$commandName'.")
+        }
+        if (!canExecuteCommand(commandName)) {
+            log.warn("Executing Kotlin LSP command '{}' even though it was not advertised by the server.", commandName)
+        }
+
+        val params = LspExecuteCommandParams(commandName, toLspArguments(arguments))
+        setWorkDoneTokenIfSupported(params, workDoneToken)
+        return requireServer().workspaceService.executeCommand(params).await()
+    }
+
+
+    private fun toLspArguments(arguments: List<Any?>): List<Any?> {
+        return arguments.map { argument ->
+            when (argument) {
+                null -> null
+                is JsonElement -> normalizeLspArgumentTree(argument)
+                else -> normalizeLspArgumentTree(gson.toJsonTree(argument))
+            }
+        }
+    }
+
+    private fun normalizeLspArgumentTree(element: JsonElement): JsonElement {
+        return when {
+            element.isJsonArray ->
+                JsonArray().also { array ->
+                    element.asJsonArray.forEach { item -> array.add(normalizeLspArgumentTree(item)) }
+                }
+            element.isJsonObject -> normalizeLspArgumentObject(element.asJsonObject)
+            else -> element.deepCopy()
+        }
+    }
+
+    private fun normalizeLspArgumentObject(source: JsonObject): JsonObject {
+        val result = JsonObject()
+        val isIdePosition = source.has("line") && source.has("column") && !source.has("character")
+        source.entrySet().forEach { (name, value) ->
+            if (!(isIdePosition && name == "column")) {
+                result.add(name, normalizeLspArgumentTree(value))
+            }
+        }
+
+        if (isIdePosition) {
+            result.add("character", source.get("column").deepCopy())
+        }
+        return result
+    }
+
+    private fun applyWorkspaceEditResult(result: Any?): WorkspaceEdit? {
+        val edit = result.toIdeWorkspaceEditOrNull() ?: return null
+        if (edit.documentChanges.isNotEmpty()) {
+            client?.applyWorkspaceEdit(edit)
+        }
+        return edit
+    }
+
+
+    private fun org.eclipse.lsp4j.ExecuteCommandOptions?.toIdeExecuteCommandOptions(): ExecuteCommandOptions {
+        val advertisedCommands = this?.commands.orEmpty()
+        return ExecuteCommandOptions(
+            commands = (advertisedCommands + KNOWN_WORKSPACE_COMMANDS).distinct(),
+            workDoneProgress = this?.workDoneProgress == true,
+        )
+    }
+
+    private fun org.eclipse.lsp4j.WorkspaceEdit?.toIdeWorkspaceEdit(): WorkspaceEdit {
+        return gson.toJsonTree(this).toIdeWorkspaceEditOrNull() ?: WorkspaceEdit()
+    }
+
+    private fun Any?.toIdeWorkspaceEditOrNull(): WorkspaceEdit? {
+        val json =
+            when (this) {
+                null -> return null
+                is JsonElement -> this
+                else -> gson.toJsonTree(this)
+            }
+        return json.toIdeWorkspaceEditOrNull()
+    }
+
+    private fun JsonElement?.toIdeWorkspaceEditOrNull(): WorkspaceEdit? {
+        val editObject = this.asObjectOrNull() ?: return null
+        val documentChanges = mutableListOf<DocumentChange>()
+        var hasWorkspaceEditShape = false
+
+        editObject.objectOrNull("changes")?.let { changes ->
+            hasWorkspaceEditShape = true
+            changes.entrySet().forEach { (uri, editsElement) ->
+                val file = uri.toPathOrNull() ?: return@forEach
+                val edits = editsElement.asArrayOrNull()?.mapNotNull { it.toIdeTextEditOrNull() }.orEmpty()
+                documentChanges.add(DocumentChange(file, edits))
+            }
+        }
+
+        editObject.arrayOrNull("documentChanges")?.forEach { changeElement ->
+            hasWorkspaceEditShape = true
+            val changeObject = changeElement.asObjectOrNull() ?: return@forEach
+            val textDocument = changeObject.objectOrNull("textDocument") ?: return@forEach
+            val uri = textDocument.stringOrNull("uri") ?: return@forEach
+            val file = uri.toPathOrNull() ?: return@forEach
+            val edits = changeObject.arrayOrNull("edits")?.mapNotNull { it.toIdeTextEditOrNull() }.orEmpty()
+            documentChanges.add(DocumentChange(file, edits))
+        }
+
+        return if (hasWorkspaceEditShape) WorkspaceEdit(documentChanges) else null
+    }
+
+    private fun JsonElement.toIdeTextEditOrNull(): TextEdit? {
+        val editObject = asObjectOrNull() ?: return null
+        val range = editObject.objectOrNull("range")?.toIdeRangeOrNull() ?: return null
+        return TextEdit(range, editObject.stringOrNull("newText").orEmpty())
+    }
+
+    private fun JsonObject.toIdeRangeOrNull(): Range? {
+        val start = objectOrNull("start")?.toIdePositionOrNull() ?: return null
+        val end = objectOrNull("end")?.toIdePositionOrNull() ?: return null
+        return Range(start, end)
+    }
+
+    private fun JsonObject.toIdePositionOrNull(): Position? {
+        val line = intOrNull("line") ?: return null
+        val column = intOrNull("character") ?: intOrNull("column") ?: return null
+        return Position(line, column)
+    }
+
+    private fun setWorkDoneTokenIfSupported(params: LspExecuteCommandParams, workDoneToken: Any?) {
+        if (workDoneToken == null) {
+            return
+        }
+        runCatching {
+            params.javaClass.methods
+                .firstOrNull { method ->
+                    method.name == "setWorkDoneToken" && method.parameterTypes.size == 1
+                }
+                ?.invoke(params, workDoneToken)
+        }
+    }
+
+    private fun String.toPathOrNull(): Path? {
+        return runCatching { File(URI(this)).toPath() }
+            .getOrElse { runCatching { java.nio.file.Paths.get(this) }.getOrNull() }
+    }
+
+    private fun JsonElement?.asObjectOrNull(): JsonObject? =
+        if (this != null && isJsonObject) asJsonObject else null
+
+    private fun JsonElement?.asArrayOrNull(): JsonArray? =
+        if (this != null && isJsonArray) asJsonArray else null
+
+    private fun JsonObject.objectOrNull(name: String): JsonObject? = get(name).asObjectOrNull()
+
+    private fun JsonObject.arrayOrNull(name: String): JsonArray? = get(name).asArrayOrNull()
+
+    private fun JsonObject.stringOrNull(name: String): String? {
+        val value = get(name) ?: return null
+        return if (value.isJsonNull) null else value.asString
+    }
+
+    private fun JsonObject.intOrNull(name: String): Int? {
+        val value = get(name) ?: return null
+        return if (value.isJsonNull) null else value.asInt
     }
 
     override fun shutdown() {

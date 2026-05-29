@@ -19,6 +19,8 @@ package com.itsaky.androidide.tooling.impl.progress
 
 import com.itsaky.androidide.tooling.api.IToolingApiClient
 import com.itsaky.androidide.tooling.impl.Main
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.ProgressListener
@@ -44,9 +46,87 @@ import org.gradle.tooling.events.work.WorkItemStartEvent
  * @author Akash Yadav
  */
 class ForwardingProgressListener : ProgressListener {
+  companion object {
+    private val inFlightByOperation = ConcurrentHashMap<String, AtomicInteger>()
+    @Volatile private var startedEvents: Long = 0
+    @Volatile private var finishedEvents: Long = 0
+
+    fun onBuildStart() {
+      inFlightByOperation.clear()
+      startedEvents = 0
+      finishedEvents = 0
+    }
+
+    data class ClosureSummary(
+        val startedEvents: Long,
+        val finishedEvents: Long,
+        val danglingByOperation: Map<String, Int>,
+    )
+
+    fun onBuildEnd(): ClosureSummary {
+      val dangling =
+          inFlightByOperation
+              .mapValues { (_, counter) -> counter.get() }
+              .filterValues { it > 0 }
+              .toSortedMap()
+      return ClosureSummary(startedEvents, finishedEvents, dangling)
+    }
+
+    private fun operationKey(event: ProgressEvent): String {
+      val descriptor = event.descriptor
+      val parent = descriptor.parent
+      return buildString {
+        append(event.javaClass.simpleName)
+        append('|')
+        append(descriptor.name)
+        append('|')
+        append(descriptor.displayName)
+        append('|')
+        append(parent?.name ?: "<no-parent>")
+      }
+    }
+  }
+
+  @Volatile private var lastDispatchedAtNanos: Long = 0L
+
+  private fun shouldDispatchNow(): Boolean {
+    val maxEvents = Main.maxProgressEventsPerSecond
+    if (maxEvents == Int.MAX_VALUE) {
+      return true
+    }
+
+    val intervalNanos = 1_000_000_000L / maxEvents.coerceAtLeast(1)
+    val now = System.nanoTime()
+    val last = lastDispatchedAtNanos
+    if (now - last < intervalNanos) {
+      return false
+    }
+
+    lastDispatchedAtNanos = now
+    return true
+  }
 
   override fun statusChanged(event: ProgressEvent?) {
     if (event == null) {
+      return
+    }
+
+    when (event) {
+      is StartEvent -> {
+        startedEvents++
+        inFlightByOperation.computeIfAbsent(operationKey(event)) { AtomicInteger(0) }.incrementAndGet()
+      }
+      is FinishEvent -> {
+        finishedEvents++
+        val counter = inFlightByOperation.computeIfAbsent(operationKey(event)) { AtomicInteger(0) }
+        if (counter.get() > 0) {
+          counter.decrementAndGet()
+        }
+      }
+    }
+
+    val isLifecycleEvent = event is StartEvent || event is FinishEvent
+    if (!isLifecycleEvent && !shouldDispatchNow()) {
       return
     }
 

@@ -68,3 +68,9 @@ open class JavaProjectModelBuilderParams(
       base: ModuleProjectModelBuilderParams
   ) : this(base.project, base.module, base.modulePaths)
 }
+
+
+data class GradleProjectModelBuilderParams(
+    val controller: org.gradle.tooling.BuildController,
+    val gradleProject: org.gradle.tooling.model.GradleProject,
+)

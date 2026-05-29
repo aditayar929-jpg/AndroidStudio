@@ -46,22 +46,23 @@ internal class JavaProjectImpl(
   override fun getContentRoots(): CompletableFuture<List<JavaContentRoot>> {
     return CompletableFuture.supplyAsync {
       val list = ArrayList<JavaContentRoot>()
-      for (contentRoot in ideaModule.contentRoots) {
+      for (contentRoot in ideaModule.contentRoots.filterNotNull()) {
         val thisRoot = JavaContentRoot()
-        for (sourceDir in contentRoot!!.sourceDirectories) {
-          (thisRoot.sourceDirectories as MutableList).add(
-              JavaSourceDirectory(sourceDir!!.directory, sourceDir.isGenerated)
-          )
-          }
-          else -> Unit
-        }
-        for (testDir in contentRoot.testDirectories) {
-          (thisRoot.testDirectories as MutableList).add(
-              JavaSourceDirectory(testDir!!.directory, testDir.isGenerated)
-          )
-          }
-          else -> Unit
-        }
+        val sourceDirectories = mutableListOf<JavaSourceDirectory>()
+        contentRoot.sourceDirectories
+            .filterNotNull()
+            .forEach { sourceDir ->
+              sourceDirectories.add(JavaSourceDirectory(sourceDir.directory, sourceDir.isGenerated))
+            }
+        thisRoot.sourceDirectories = sourceDirectories
+
+        val testDirectories = mutableListOf<JavaSourceDirectory>()
+        contentRoot.testDirectories
+            .filterNotNull()
+            .forEach { testDir ->
+              testDirectories.add(JavaSourceDirectory(testDir.directory, testDir.isGenerated))
+            }
+        thisRoot.testDirectories = testDirectories
         list.add(thisRoot)
       }
 
@@ -73,35 +74,32 @@ internal class JavaProjectImpl(
     return CompletableFuture.supplyAsync {
       val list = ArrayList<JavaModuleDependency>()
       for (dependency in ideaModule.dependencies) {
-        when (dependency) {
-          is IdeaSingleEntryLibraryDependency -> {
-            val file = dependency.file
-            val source = dependency.source
-            val javadoc = dependency.javadoc
-            val artifact = getGradleArtifact(dependency)
-            list.add(
-                JavaModuleExternalDependency(
-                    file,
-                    source,
-                    javadoc,
-                    artifact,
-                    dependency.getScope().scope,
-                    dependency.getExported(),
-                )
-            )
-          }
-          is IdeaModuleDependency -> {
-            val moduleName = dependency.targetModuleName
-            list.add(
-                JavaModuleProjectDependency(
-                    moduleName,
-                    allModulePaths[moduleName] ?: "",
-                    dependency.scope.scope,
-                    dependency.exported,
-                )
-            )
-          }
-          else -> Unit
+        // TODO There might be unresolved dependencies here. We need to handle them too.
+        if (dependency is IdeaSingleEntryLibraryDependency) {
+          val file = dependency.file
+          val source = dependency.source
+          val javadoc = dependency.javadoc
+          val artifact = getGradleArtifact(dependency)
+          list.add(
+              JavaModuleExternalDependency(
+                  file,
+                  source,
+                  javadoc,
+                  artifact,
+                  dependency.getScope().scope,
+                  dependency.getExported(),
+              )
+          )
+        } else if (dependency is IdeaModuleDependency) {
+          val moduleName = dependency.targetModuleName
+          list.add(
+              JavaModuleProjectDependency(
+                  moduleName,
+                  allModulePaths[moduleName] ?: "",
+                  dependency.scope.scope,
+                  dependency.exported,
+              )
+          )
         }
       }
 

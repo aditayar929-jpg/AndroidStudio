@@ -41,6 +41,9 @@ public class SignatureHelpWindow extends BaseEditorWindow {
 
   private static final Logger LOG = LoggerFactory.getLogger(SignatureHelpWindow.class);
 
+  private static final int SIGNATURE_KEYWORD_COLOR = 0xFF5C1D27;
+  private static final int ACTIVE_PARAMETER_KEYWORD_COLOR = 0xFF1D205C;
+
   /**
    * Create a signature help popup window for editor
    *
@@ -137,9 +140,8 @@ public class SignatureHelpWindow extends BaseEditorWindow {
       name = name.substring(0, indexOfParen);
     }
 
-    final var foreground = ResourceUtilsKt.resolveAttr(getEditor().getContext(),
-        attr.colorOnSecondaryContainer);
-    final var paramSelected = ResourceUtilsKt.resolveAttr(getEditor().getContext(), attr.colorPrimary);
+    final var foreground = SIGNATURE_KEYWORD_COLOR;
+    final var paramSelected = ACTIVE_PARAMETER_KEYWORD_COLOR;
     final var operators = foreground;
 
     result.append(

@@ -1,0 +1,390 @@
+syntax = "proto3";
+
+package zerostudio.tooling.build.v1;
+
+import "build/bazel/remote/execution/v2/remote_execution.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.zerostudio.tooling.buildgrpc.proto";
+option java_outer_classname = "BuildServiceProto";
+
+// A BSP-inspired build session service that mixes REAPI execution hints and BEP style events.
+service BuildSessionService {
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+  rpc StartBuild(StartBuildRequest) returns (stream BuildEventEnvelope);
+  rpc StreamBuildEvents(StreamBuildEventsRequest) returns (stream BuildEventEnvelope);
+  rpc ExecuteAction(ExecuteActionRequest) returns (ExecuteActionResponse);
+  rpc NegotiateContext(NegotiateContextRequest) returns (NegotiateContextResponse);
+  rpc UploadResource(stream ResourceChunk) returns (ResourceTransferAck);
+  rpc DownloadResource(ResourceTransferRequest) returns (stream ResourceChunk);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+message InitializeRequest {
+  string workspace_root = 1;
+  string client_name = 2;
+  string client_version = 3;
+  repeated string supported_capabilities = 4;
+  BuildProtocolProfile profile = 5;
+  TransportPreferences transport = 6;
+  SerializationPreferences serialization = 7;
+}
+
+message InitializeResponse {
+  string server_name = 1;
+  string server_version = 2;
+  repeated string supported_languages = 3;
+  repeated string protocol_features = 4;
+  BuildProtocolProfile negotiated_profile = 5;
+  TransportConfig transport = 6;
+  SerializationConfig serialization = 7;
+  CapabilityMatrix capabilities = 8;
+}
+
+message StartBuildRequest {
+  string build_id = 1;
+  repeated string targets = 2;
+  map<string, string> options = 3;
+  BuildMode mode = 4;
+  repeated ExecutionHint execution_hints = 5;
+  ResourceBudget budget = 6;
+  ContextSnapshot context = 7;
+}
+
+message StreamBuildEventsRequest {
+  string build_id = 1;
+  int64 from_sequence = 2;
+}
+
+message ExecuteActionRequest {
+  string build_id = 1;
+  string action_digest = 2;
+  bytes command = 3;
+  bytes input_root_digest = 4;
+  .build.bazel.remote.execution.v2.Digest reapi_action_digest = 5;
+  .build.bazel.remote.execution.v2.Platform platform = 6;
+  string instance_name = 7;
+  int32 priority = 8;
+}
+
+message ExecuteActionResponse {
+  string operation_name = 1;
+  ExecutionStatus status = 2;
+  bytes action_result = 3;
+  .build.bazel.remote.execution.v2.Digest stdout_digest = 4;
+  .build.bazel.remote.execution.v2.Digest stderr_digest = 5;
+  ResourceUsage usage = 6;
+}
+
+message DataChunk {
+  string build_id = 1;
+  string transfer_id = 2;
+  int64 sequence = 3;
+  bytes payload = 4;
+  bool eof = 5;
+  string content_type = 6;
+  bytes checksum = 7;
+  CompressionKind compression = 8;
+}
+
+message FetchDataRequest {
+  string build_id = 1;
+  string transfer_id = 2;
+  int64 offset = 3;
+  int64 max_bytes = 4;
+}
+
+message QueryTransferCursorRequest {
+  string build_id = 1;
+  string transfer_id = 2;
+}
+
+message QueryTransferCursorResponse {
+  string build_id = 1;
+  string transfer_id = 2;
+  int64 next_expected_sequence = 3;
+  bool found = 4;
+  int64 committed_bytes = 5;
+}
+
+message CleanupTransferRequest {
+  string build_id = 1;
+  string transfer_id = 2;
+}
+
+message CleanupTransferResponse {
+  bool removed = 1;
+}
+
+message DataTransferAck {
+  string transfer_id = 1;
+  bool accepted = 2;
+  int64 received_bytes = 3;
+  string message = 4;
+  TransferRejectReason reject_reason = 5;
+  int64 next_expected_sequence = 6;
+}
+
+message ContextFrame {
+  string build_id = 1;
+  string channel = 2;
+  int64 sequence = 3;
+  google.protobuf.Timestamp sent_at = 4;
+  map<string, string> labels = 5;
+  oneof payload {
+    ContextSnapshot snapshot = 6;
+    DataChunk chunk = 7;
+    google.protobuf.Any extension = 8;
+  }
+}
+
+message ContextSnapshot {
+  string workspace_root = 1;
+  map<string, string> env = 2;
+  map<string, string> toolchains = 3;
+  map<string, string> execution_properties = 4;
+}
+
+message ShutdownRequest {
+  string reason = 1;
+}
+
+message ShutdownResponse {
+  bool accepted = 1;
+}
+
+message BuildEventEnvelope {
+  string build_id = 1;
+  int64 sequence = 2;
+  int64 timestamp_millis = 3;
+  BuildEventKind kind = 4;
+  oneof payload {
+    BuildProgressEvent progress = 5;
+    BuildDiagnosticEvent diagnostic = 6;
+    BuildTargetEvent target = 7;
+    BuildFinishedEvent finished = 8;
+    BuildResourceEvent resource = 9;
+    DataTransferEvent transfer = 10;
+  }
+}
+
+message BuildProgressEvent {
+  string message = 1;
+  float percent = 2;
+}
+
+message BuildDiagnosticEvent {
+  string origin = 1;
+  string message = 2;
+  DiagnosticSeverity severity = 3;
+  string file = 4;
+  int32 line = 5;
+  int32 column = 6;
+}
+
+message BuildTargetEvent {
+  string label = 1;
+  BuildTargetStatus status = 2;
+}
+
+message BuildFinishedEvent {
+  bool success = 1;
+  int64 duration_millis = 2;
+  string summary = 3;
+}
+
+message BuildResourceEvent {
+  ResourceUsage usage = 1;
+  ResourceBudget budget = 2;
+}
+
+message DataTransferEvent {
+  string transfer_id = 1;
+  int64 total_bytes = 2;
+  int64 transferred_bytes = 3;
+  CompressionKind compression = 4;
+  int64 chunk_count = 5;
+  int64 duration_millis = 6;
+  bool accepted = 7;
+  TransferRejectReason reject_reason = 8;
+  ArtifactKind artifact_kind = 9;
+}
+
+message TransportPreferences {
+  uint32 max_frame_bytes = 1;
+  repeated CompressionKind supported_compression = 2;
+  bool supports_multiplex = 3;
+}
+
+message TransportConfig {
+  uint32 max_frame_bytes = 1;
+  CompressionKind compression = 2;
+  bool multiplex_enabled = 3;
+}
+
+message SerializationPreferences {
+  repeated SerializationKind preferred = 1;
+}
+
+message SerializationConfig {
+  SerializationKind selected = 1;
+}
+
+message CapabilityMatrix {
+  repeated string lifecycle_methods = 1;
+  repeated string transfer_methods = 2;
+  repeated string execution_features = 3;
+}
+
+message ResourceUsage {
+  int64 peak_rss_bytes = 1;
+  int64 cpu_time_millis = 2;
+  int64 io_read_bytes = 3;
+  int64 io_write_bytes = 4;
+}
+
+message ResourceBudget {
+  int64 max_memory_bytes = 1;
+  int32 max_parallel_actions = 2;
+  google.protobuf.Duration action_timeout = 3;
+}
+
+message ExecutionHint {
+  string key = 1;
+  string value = 2;
+}
+
+
+enum CompressionKind {
+  COMPRESSION_KIND_UNSPECIFIED = 0;
+  COMPRESSION_KIND_NONE = 1;
+  COMPRESSION_KIND_ZSTD = 2;
+  COMPRESSION_KIND_LZ4 = 3;
+  COMPRESSION_KIND_GZIP = 4;
+}
+
+enum TransferRejectReason {
+  TRANSFER_REJECT_REASON_NONE = 0;
+  TRANSFER_REJECT_REASON_MISSING_IDENTITY = 1;
+  TRANSFER_REJECT_REASON_SEQUENCE_VIOLATION = 2;
+  TRANSFER_REJECT_REASON_CHECKSUM_MISMATCH = 3;
+  TRANSFER_REJECT_REASON_UNSUPPORTED_COMPRESSION = 4;
+  TRANSFER_REJECT_REASON_PERMISSION_DENIED = 5;
+  TRANSFER_REJECT_REASON_DECOMPRESSION_FAILED = 6;
+}
+
+enum ArtifactKind {
+  ARTIFACT_KIND_UNSPECIFIED = 0;
+  ARTIFACT_KIND_LOG = 1;
+  ARTIFACT_KIND_DIAGNOSTIC = 2;
+  ARTIFACT_KIND_BINARY = 3;
+  ARTIFACT_KIND_REPORT = 4;
+}
+
+enum SerializationKind {
+  SERIALIZATION_KIND_UNSPECIFIED = 0;
+  SERIALIZATION_KIND_PROTOBUF_BINARY = 1;
+  SERIALIZATION_KIND_FLATBUFFERS = 2;
+  SERIALIZATION_KIND_JSON = 3;
+}
+
+enum BuildProtocolProfile {
+  BUILD_PROTOCOL_PROFILE_UNSPECIFIED = 0;
+  BUILD_PROTOCOL_PROFILE_CORE = 1;
+  BUILD_PROTOCOL_PROFILE_ENTERPRISE = 2;
+}
+
+enum BuildMode {
+  BUILD_MODE_UNSPECIFIED = 0;
+  BUILD_MODE_INCREMENTAL = 1;
+  BUILD_MODE_REBUILD = 2;
+  BUILD_MODE_TEST = 3;
+}
+
+enum BuildEventKind {
+  BUILD_EVENT_KIND_UNSPECIFIED = 0;
+  BUILD_EVENT_KIND_PROGRESS = 1;
+  BUILD_EVENT_KIND_DIAGNOSTIC = 2;
+  BUILD_EVENT_KIND_TARGET = 3;
+  BUILD_EVENT_KIND_FINISHED = 4;
+  BUILD_EVENT_KIND_RESOURCE = 5;
+  BUILD_EVENT_KIND_DATA_TRANSFER = 6;
+}
+
+enum DiagnosticSeverity {
+  DIAGNOSTIC_SEVERITY_UNSPECIFIED = 0;
+  DIAGNOSTIC_SEVERITY_INFO = 1;
+  DIAGNOSTIC_SEVERITY_WARNING = 2;
+  DIAGNOSTIC_SEVERITY_ERROR = 3;
+}
+
+enum BuildTargetStatus {
+  BUILD_TARGET_STATUS_UNSPECIFIED = 0;
+  BUILD_TARGET_STATUS_PENDING = 1;
+  BUILD_TARGET_STATUS_RUNNING = 2;
+  BUILD_TARGET_STATUS_SUCCESS = 3;
+  BUILD_TARGET_STATUS_FAILED = 4;
+}
+
+enum ExecutionStatus {
+  EXECUTION_STATUS_UNSPECIFIED = 0;
+  EXECUTION_STATUS_QUEUED = 1;
+  EXECUTION_STATUS_EXECUTING = 2;
+  EXECUTION_STATUS_COMPLETED = 3;
+  EXECUTION_STATUS_FAILED = 4;
+}
+
+
+message NegotiateContextRequest {
+  string workspace_root = 1;
+  string build_system_id = 2;
+  string build_system_version = 3;
+  map<string, string> execution_environment = 4;
+  repeated string requested_capabilities = 5;
+  SerializationCodec preferred_codec = 6;
+  TransferCompression preferred_compression = 7;
+}
+
+message NegotiateContextResponse {
+  repeated string accepted_capabilities = 1;
+  SerializationCodec negotiated_codec = 2;
+  TransferCompression negotiated_compression = 3;
+  int32 max_chunk_size_bytes = 4;
+}
+
+message ResourceTransferRequest {
+  string transfer_id = 1;
+  string resource_uri = 2;
+}
+
+message ResourceChunk {
+  string transfer_id = 1;
+  int64 sequence = 2;
+  bytes payload = 3;
+  bool eof = 4;
+}
+
+message ResourceTransferAck {
+  string transfer_id = 1;
+  bool accepted = 2;
+  int64 received_chunks = 3;
+  string message = 4;
+}
+
+enum SerializationCodec {
+  SERIALIZATION_CODEC_UNSPECIFIED = 0;
+  SERIALIZATION_CODEC_PROTOBUF = 1;
+  SERIALIZATION_CODEC_FLATBUFFERS = 2;
+  SERIALIZATION_CODEC_CAPN_PROTO = 3;
+}
+
+enum TransferCompression {
+  TRANSFER_COMPRESSION_UNSPECIFIED = 0;
+  TRANSFER_COMPRESSION_NONE = 1;
+  TRANSFER_COMPRESSION_ZSTD = 2;
+  TRANSFER_COMPRESSION_LZ4 = 3;
+  TRANSFER_COMPRESSION_GZIP = 4;
+}

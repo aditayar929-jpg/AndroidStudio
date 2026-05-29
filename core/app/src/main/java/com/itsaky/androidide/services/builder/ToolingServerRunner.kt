@@ -21,8 +21,10 @@ import ch.qos.logback.core.CoreConstants
 import com.itsaky.androidide.shell.executeProcessAsync
 import com.itsaky.androidide.tasks.cancelIfActive
 import com.itsaky.androidide.tooling.api.IProject
-import com.itsaky.androidide.tooling.api.IToolingApiClient
 import com.itsaky.androidide.tooling.api.IToolingApiServer
+import com.itsaky.androidide.tooling.api.transport.ToolingTransportClientObserver
+import com.itsaky.androidide.tooling.impl.transport.ToolingServerEndpointFactories
+import com.itsaky.androidide.tooling.impl.transport.LegacyToolingClientAdapter
 import com.itsaky.androidide.tooling.api.util.ToolingApiLauncher
 import com.itsaky.androidide.utils.Environment
 import com.termux.shared.reflection.ReflectionUtils
@@ -130,14 +132,35 @@ internal class ToolingServerRunner(
 
               val launcher =
                   ToolingApiLauncher.newClientLauncher(
-                      observer!!.getClient(),
+                      LegacyToolingClientAdapter(
+                          checkNotNull(observer) {
+                            "ToolingServerRunner observer was released before launcher init"
+                          },
+                      ),
                       inputStream,
                       outputStream,
                   )
 
               val future = launcher.startListening()
-              observer?.onListenerStarted(
-                  server = launcher.remoteProxy as IToolingApiServer,
+              val configuredTransport =
+                  System.getProperty(
+                      ToolingServerEndpointFactories.TRANSPORT_SWITCH_PROPERTY,
+                      ToolingServerEndpointFactories.LEGACY,
+                  )
+              val selection = ToolingServerEndpointFactories.resolveSelection(configuredTransport)
+              log.info(
+                  "Tooling transport configured='{}', parsed={}, effective={}, fallbackReason={}, reapiWorkspace='{}', reapiWorkspaceReady={}",
+                  selection.requestedValue,
+                  selection.requestedMode?.name ?: "UNKNOWN",
+                  selection.resolvedMode.name,
+                  selection.reason ?: "NONE",
+                  selection.reapiWorkspacePath,
+                  selection.reapiWorkspaceReady,
+              )
+              observer?.onServerStarted(
+                  serverEndpoint =
+                      ToolingServerEndpointFactories.fromSelection(selection)
+                          .create(launcher.remoteProxy as IToolingApiServer),
                   projectProxy = launcher.remoteProxy as IProject,
                   errorStream = errorStream,
               )
@@ -197,18 +220,7 @@ internal class ToolingServerRunner(
         .getOrNull()
   }
 
-  interface Observer {
-
-    fun onListenerStarted(
-        server: IToolingApiServer,
-        projectProxy: IProject,
-        errorStream: InputStream,
-    )
-
-    fun onServerExited(exitCode: Int)
-
-    fun getClient(): IToolingApiClient
-  }
+  interface Observer : ToolingTransportClientObserver
 
   /** Callback to listen for Tooling API server start event. */
   fun interface OnServerStartListener {

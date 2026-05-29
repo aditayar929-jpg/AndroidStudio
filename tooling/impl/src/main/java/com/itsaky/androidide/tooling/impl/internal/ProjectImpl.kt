@@ -87,7 +87,7 @@ internal class ProjectImpl(
   override fun getType(): CompletableFuture<ProjectType> {
     return CompletableFuture.supplyAsync {
       synchronized(lock) {
-        return@supplyAsync when (this.selectedProject.project) {
+        when (this.selectedProject.project) {
           is IAndroidProject -> ProjectType.Android
           is IJavaProject -> ProjectType.Java
           is IGradleProject -> ProjectType.Gradle

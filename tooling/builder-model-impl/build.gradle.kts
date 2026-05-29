@@ -21,6 +21,16 @@ plugins {
   id("org.jetbrains.kotlin.jvm")
 }
 
+java {
+  toolchain {
+    languageVersion.set(JavaLanguageVersion.of(17))
+  }
+}
+
+kotlin {
+  jvmToolchain(17)
+}
+
 dependencies {
   api(libs.tooling.builderModel)
   api(libs.tooling.builderTestApi)

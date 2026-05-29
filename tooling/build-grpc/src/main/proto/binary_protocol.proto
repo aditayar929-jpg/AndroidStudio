@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package zerostudio.tooling.build.v1;
+
+option java_multiple_files = true;
+option java_package = "com.zerostudio.tooling.buildgrpc.proto";
+option java_outer_classname = "BinaryProtocolProto";
+
+enum ProtocolCapabilityMessage {
+  PROTOCOL_CAPABILITY_UNSPECIFIED = 0;
+  PROTOCOL_CAPABILITY_ZERO_COPY_BINARY_STREAM = 1;
+  PROTOCOL_CAPABILITY_ASYNC_COMMAND_PIPELINE = 2;
+  PROTOCOL_CAPABILITY_EVENT_SUBSCRIPTION = 3;
+  PROTOCOL_CAPABILITY_MODEL_QUERY = 4;
+  PROTOCOL_CAPABILITY_BUILD_CACHE_QUERY = 5;
+  PROTOCOL_CAPABILITY_INCREMENTAL_BUILD = 6;
+  PROTOCOL_CAPABILITY_RESUMABLE_TRANSFER = 7;
+}
+
+message ProtocolHandshakeMessage {
+  string client_name = 1;
+  string client_version = 2;
+  repeated int32 supported_protocol_versions = 3;
+  repeated ProtocolCapabilityMessage capabilities = 4;
+}
+
+message OpenSessionMessage {
+  string workspace_root = 1;
+  string build_system_id = 2;
+  map<string, string> metadata = 3;
+}
+
+enum BuildCommandType {
+  BUILD_COMMAND_TYPE_UNSPECIFIED = 0;
+  BUILD_COMMAND_TYPE_EXECUTE_TASKS = 1;
+  BUILD_COMMAND_TYPE_EXECUTE_ACTION = 2;
+  BUILD_COMMAND_TYPE_CANCEL_TASK = 3;
+  BUILD_COMMAND_TYPE_SYNC_MODEL = 4;
+  BUILD_COMMAND_TYPE_REFRESH_DEPENDENCIES = 5;
+}
+
+message BuildCommandMessage {
+  string session_id = 1;
+  string command_id = 2;
+  BuildCommandType type = 3;
+  int64 timeout_ms = 4;
+  bytes payload = 5;
+}
+
+enum BuildEventTopic {
+  BUILD_EVENT_TOPIC_UNSPECIFIED = 0;
+  BUILD_EVENT_TOPIC_LIFECYCLE = 1;
+  BUILD_EVENT_TOPIC_TASK = 2;
+  BUILD_EVENT_TOPIC_DIAGNOSTIC = 3;
+  BUILD_EVENT_TOPIC_OUTPUT = 4;
+  BUILD_EVENT_TOPIC_CACHE = 5;
+  BUILD_EVENT_TOPIC_ARTIFACT = 6;
+}
+
+message EventSubscriptionMessage {
+  string session_id = 1;
+  repeated BuildEventTopic topics = 2;
+}
+
+message ModelQueryMessage {
+  string session_id = 1;
+  string model_key = 2;
+  string selector = 3;
+}
+
+message CacheQueryMessage {
+  string session_id = 1;
+  string key = 2;
+}
+
+message BuildEventMessage {
+  string session_id = 1;
+  string command_id = 2;
+  string event_type = 3;
+  bytes payload = 4;
+}

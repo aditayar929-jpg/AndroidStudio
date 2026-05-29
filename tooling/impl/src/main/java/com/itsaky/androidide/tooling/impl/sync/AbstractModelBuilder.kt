@@ -106,6 +106,39 @@ abstract class AbstractModelBuilder<P, R>(
       return controller.findModel(model, Versions::class.java)
     }
 
+    @JvmStatic
+    protected fun isGradleDslProject(projectDir: java.io.File): Boolean {
+      val hasSettings =
+          java.io.File(projectDir, "settings.gradle").isFile ||
+              java.io.File(projectDir, "settings.gradle.kts").isFile
+      val hasBuild =
+          java.io.File(projectDir, "build.gradle").isFile ||
+              java.io.File(projectDir, "build.gradle.kts").isFile
+      return hasSettings || hasBuild
+    }
+
+    @JvmStatic
+    protected fun hasAndroidGradlePlugin(moduleDir: java.io.File): Boolean {
+      val candidates =
+          listOf(
+              java.io.File(moduleDir, "build.gradle"),
+              java.io.File(moduleDir, "build.gradle.kts"),
+          )
+      val agpMarkers =
+          listOf(
+              "com.android.application",
+              "com.android.library",
+              "com.android.test",
+              "com.android.dynamic-feature",
+          )
+      for (file in candidates) {
+        if (!file.isFile) continue
+        val content = kotlin.runCatching { file.readText() }.getOrDefault("")
+        if (agpMarkers.any { content.contains(it) }) return true
+      }
+      return false
+    }
+
     /**
      * Fetches a snapshot of the model of the given type. Throws a [ModelBuilderException] if the
      * model could not be fetched. This also logs the time consumed to fetch the model.

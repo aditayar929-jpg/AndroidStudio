@@ -50,7 +50,9 @@ import com.itsaky.androidide.flashbar.Flashbar
 import com.itsaky.androidide.lsp.api.ILanguageClient
 import com.itsaky.androidide.lsp.api.ILanguageServer
 import com.itsaky.androidide.lsp.java.utils.CancelChecker
+import com.itsaky.androidide.lsp.models.CodeActionItem
 import com.itsaky.androidide.lsp.models.Command
+import com.itsaky.androidide.lsp.models.ExecuteCommandParams
 import com.itsaky.androidide.lsp.models.DefinitionParams
 import com.itsaky.androidide.lsp.models.DefinitionResult
 import com.itsaky.androidide.lsp.models.ExpandSelectionParams
@@ -59,6 +61,7 @@ import com.itsaky.androidide.lsp.models.ReferenceResult
 import com.itsaky.androidide.lsp.models.ShowDocumentParams
 import com.itsaky.androidide.lsp.models.SignatureHelp
 import com.itsaky.androidide.lsp.models.SignatureHelpParams
+import com.itsaky.androidide.lsp.models.WorkspaceEdit
 import com.itsaky.androidide.models.Position
 import com.itsaky.androidide.models.Range
 import com.itsaky.androidide.preferences.internal.EditorPreferences
@@ -305,6 +308,55 @@ constructor(
 
       Command.TRIGGER_PARAMETER_HINTS -> signatureHelp()
       Command.FORMAT_CODE -> formatCodeAsync()
+      else -> executeServerCommand(command)
+    }
+  }
+
+  private fun executeServerCommand(command: Command) {
+    val languageServer = this.languageServer
+    if (languageServer == null) {
+      log.warn(
+          "Cannot execute LSP command '{}'. No language server is attached to the editor.",
+          command.command,
+      )
+      return
+    }
+
+    editorScope.launch(Dispatchers.Default) {
+      val params = ExecuteCommandParams(command.command, command.arguments)
+      val result =
+          safeGet("workspace/executeCommand '${command.command}'") {
+            languageServer.executeCommand(params)
+          }
+
+      withContext(Dispatchers.Main) {
+        handleExecuteCommandResult(command, result)
+      }
+    }
+  }
+
+  private fun handleExecuteCommandResult(command: Command, result: Any?) {
+    if (isReleased || result == null) {
+      return
+    }
+
+    val client = languageClient ?: languageServer?.client
+    when (result) {
+      is WorkspaceEdit -> {
+        if (client?.applyWorkspaceEdit(result) != true) {
+          log.warn(
+              "workspace/executeCommand '{}' returned a WorkspaceEdit that the client did not apply.",
+              command.command,
+          )
+        }
+      }
+
+      is CodeActionItem -> client?.performCodeAction(result)
+      else -> log.debug(
+          "workspace/executeCommand '{}' completed with result type '{}'.",
+          command.command,
+          result::class.java.name,
+      )
     }
   }
 

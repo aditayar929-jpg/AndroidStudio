@@ -35,6 +35,10 @@ object GeneralPreferences {
   const val TREE_REMEMBER_EXPANDED_STATE = "idepref_tree_remember_expanded_state"
   const val LAST_OPENED_PROJECT = "ide_last_project"
 
+  const val DECOMPILER_ENGINE = "idepref_general_decompiler_engine"
+  const val DECOMPILER_ENGINE_JADX = "jadx"
+
+
   const val PREF_LOTTIE_ANIMATION = "idepref_splash_lottie_animation"
   const val DEFAULT_LOTTIE_ANIMATION = "LottieAnimation/splash_screen.json"
 
@@ -112,6 +116,13 @@ object GeneralPreferences {
     }
 
   // lottie Animation
+
+  var decompilerEngine: String
+    get() = prefManager.getString(DECOMPILER_ENGINE, DECOMPILER_ENGINE_JADX)
+    set(value) {
+      prefManager.putString(DECOMPILER_ENGINE, value)
+    }
+
   var lottieAnimation: String
     get() = prefManager.getString(PREF_LOTTIE_ANIMATION, DEFAULT_LOTTIE_ANIMATION)
     set(value) {

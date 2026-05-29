@@ -58,6 +58,7 @@ class InterfaceConfig(
     addPreference(ThemeSelector())
     addPreference(LocaleSelector())
     addPreference(lottieAnimationPreference)
+    addPreference(DecompilerEngineSelector())
   }
 }
 
@@ -289,5 +290,24 @@ class TreeRememberExpandedStatePreference(
     GeneralPreferences.treeRememberExpandedState =
         newValue as? Boolean ?: GeneralPreferences.treeRememberExpandedState
     return true
+  }
+}
+
+
+@Parcelize
+class DecompilerEngineSelector(
+    override val key: String = GeneralPreferences.DECOMPILER_ENGINE,
+    override val title: Int = R.string.title_general,
+    override val summary: Int? = R.string.idepref_general_summary,
+    override val icon: Int? = R.drawable.ic_settings,
+) : SingleChoicePreference() {
+  override fun getEntries(preference: Preference): Array<PreferenceChoices.Entry> {
+    val current = GeneralPreferences.decompilerEngine
+    val engines = listOf("jadx", "cfr", "fernflower")
+    return engines.map { e -> PreferenceChoices.Entry(label = e.uppercase(), _isChecked = current == e, data = e) }.toTypedArray()
+  }
+
+  override fun onChoiceConfirmed(preference: Preference, entry: PreferenceChoices.Entry?, position: Int) {
+    GeneralPreferences.decompilerEngine = entry?.data as? String ?: "jadx"
   }
 }

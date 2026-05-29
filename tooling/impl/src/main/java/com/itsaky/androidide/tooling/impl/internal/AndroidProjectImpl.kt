@@ -54,6 +54,7 @@ import com.itsaky.androidide.tooling.api.models.DependencyGraphModel
 import com.itsaky.androidide.tooling.api.models.VariantDependencyAdjacencyModel
 import com.itsaky.androidide.tooling.api.models.GraphNodeModel
 import com.itsaky.androidide.tooling.api.models.ArtifactDependencyAdjacencyModel
+import com.itsaky.androidide.tooling.api.models.ArtifactDependencyAdjacencyListModel
 import com.itsaky.androidide.tooling.api.models.FlavorMatrixModel
 import com.itsaky.androidide.tooling.api.models.GeneratedSourceModel
 import com.itsaky.androidide.tooling.api.models.LibraryGraphEntry
@@ -158,13 +159,15 @@ internal class AndroidProjectImpl(
   private fun Variant.toMetadata(): AndroidVariantMetadata {
     val moduleType = mapModuleType(basicAndroidProject.projectType)
     val buildTypeModel =
-        androidDsl.buildTypes.find { it.name == buildType }?.let {
-          BuildTypeMatrixModel(
-              name = it.name,
-              isDebuggable = it.isDebuggable,
-              isMinifyEnabled = it.isMinifyEnabled,
-              signingConfig = it.signingConfig,
-          )
+        basicAndroidProject.variants.firstOrNull { it.name == name }?.buildType?.let { bt ->
+          androidDsl.buildTypes.find { it.name == bt }?.let {
+            BuildTypeMatrixModel(
+                name = it.name,
+                isDebuggable = it.isDebuggable,
+                isMinifyEnabled = it.isMinifyEnabled,
+                signingConfig = it.signingConfig,
+            )
+          }
         }
 
     return AndroidVariantMetadata(
@@ -173,14 +176,14 @@ internal class AndroidProjectImpl(
         otherArtifacts = mutableMapOf(),
         moduleType = moduleType,
         productFlavors =
-            productFlavors.map { flavorName ->
+            (basicAndroidProject.variants.firstOrNull { it.name == name }?.productFlavors ?: emptyList()).map { flavorName ->
               androidDsl.productFlavors.find { it.name == flavorName }?.let {
                 FlavorMatrixModel(
                     name = it.name,
                     dimension = it.dimension,
                     minSdkVersion = it.minSdkVersion?.apiLevel,
                     targetSdkVersion = it.targetSdkVersion?.apiLevel,
-                    resourceConfigurations = it.resourceConfigurations,
+                    resourceConfigurations = it.resourceConfigurations.toList(),
                 )
               }
             }.filterNotNull(),
@@ -242,29 +245,29 @@ internal class AndroidProjectImpl(
   }
 
   private fun computeSourceSpace(variantName: String): SourceSpaceModel? {
-    val sourceSet = basicAndroidProject.sourceSets.firstOrNull { it.name == variantName }
+    val sourceSet = sourceProviderForVariant(variantName)
     val generatedBase = File(gradleProject.buildDirectory, "generated")
-    return sourceSet?.let {
+    return sourceSet?.let { source ->
       SourceSpaceModel(
-          javaDirectories = it.javaDirectories,
-          kotlinDirectories = it.kotlinDirectories,
-          manifestFiles = listOfNotNull(it.manifestFile),
-          resourceDirectories = it.resDirectories,
-          assetsDirectories = it.assetsDirectories,
-          aidlDirectories = it.aidlDirectories ?: emptyList(),
-          resourcesDirectories = it.resourcesDirectories.toList(),
-          renderscriptDirectories = it.renderscriptDirectories ?: emptyList(),
-          baselineProfileDirectories = it.baselineProfileDirectories ?: emptyList(),
-          keepRulesDirectories = it.keepRulesDirectories ?: emptyList(),
-          aarKeepRulesDirectories = it.aarKeepRulesDirectories ?: emptyList(),
-          shadersDirectories = it.shadersDirectories ?: emptyList(),
-          mlModelsDirectories = it.mlModelsDirectories ?: emptyList(),
-          jniLibsDirectories = it.jniLibsDirectories,
-          customDirectories = it.customDirectories.map { custom -> custom.directory },
+          javaDirectories = source.javaDirectories.toList(),
+          kotlinDirectories = source.kotlinDirectories.toList(),
+          manifestFiles = listOfNotNull(source.manifestFile),
+          resourceDirectories = source.resDirectories?.toList() ?: emptyList(),
+          assetsDirectories = source.assetsDirectories?.toList() ?: emptyList(),
+          aidlDirectories = source.aidlDirectories?.toList() ?: emptyList(),
+          resourcesDirectories = source.resourcesDirectories.toList(),
+          renderscriptDirectories = source.renderscriptDirectories?.toList() ?: emptyList(),
+          baselineProfileDirectories = source.baselineProfileDirectories?.toList() ?: emptyList(),
+          keepRulesDirectories = source.keepRulesDirectories?.toList() ?: emptyList(),
+          aarKeepRulesDirectories = source.aarKeepRulesDirectories?.toList() ?: emptyList(),
+          shadersDirectories = source.shadersDirectories?.toList() ?: emptyList(),
+          mlModelsDirectories = source.mlModelsDirectories?.toList() ?: emptyList(),
+          jniLibsDirectories = source.jniLibsDirectories.toList(),
+          customDirectories = source.customDirectories?.map { custom -> custom.directory } ?: emptyList(),
           generatedSources =
               GeneratedSourceModel(
                   annotationProcessorSources =
-                      (listOf(File(generatedBase, "ap_generated_sources")) + generatedSourceFolders)
+                      (listOf(File(generatedBase, "ap_generated_sources")) + androidProject.variants.firstOrNull { it.name == variantName }?.mainArtifact?.generatedSourceFolders.orEmpty())
                           .distinct()
                           .filter(File::exists),
                   buildConfigSources =
@@ -287,17 +290,18 @@ internal class AndroidProjectImpl(
     return DependencyGraphModel(
         artifactDependencies =
             libraries.mapNotNull {
-              val artifactAddress = it.artifactAddress ?: return@mapNotNull null
+              val artifactAddress = it.libraryInfo ?: return@mapNotNull null
               "${artifactAddress.group}:${artifactAddress.name}:${artifactAddress.version}"
             },
-        localJarDependencies = libraries.mapNotNull { it.localJar },
-        aarExplodedFolders = libraries.mapNotNull { lib -> lib.folder.takeIf { lib.type == LibraryType.ANDROID_LIBRARY } },
+        localJarDependencies = emptyList(),
+        aarExplodedFolders = emptyList(),
         aarClassesJars =
             libraries.mapNotNull { lib ->
-              lib.folder
+              lib.artifact
                   ?.takeIf { lib.type == LibraryType.ANDROID_LIBRARY }
+                  ?.parentFile
                   ?.resolve("jars/classes.jar")
-                  ?.takeIf { it.exists() }
+                  ?.takeIf(File::exists)
             },
         projectDependencies =
             libraries.mapNotNull { lib ->
@@ -351,7 +355,7 @@ internal class AndroidProjectImpl(
                         TestSuiteSourceDependenciesAdjacencyListModel(
                             sourceType = sourceDeps.type.name,
                             sourceName = sourceDeps.name,
-                            artifactDependencies = sourceDeps.artifactDependencies.toAdjacencyList(),
+                            artifactDependencies = sourceDeps.artifactDependencies.toAdjacencyEdges(),
                         )
                       },
               )
@@ -401,34 +405,6 @@ internal class AndroidProjectImpl(
                       },
               )
             },
-        resolvedProjectVariants = resolvedProjectVariants,
-        resolvedProjectVariantDetails = resolvedProjectVariantDetails,
-        projectInfoNodes = buildProjectInfoNodes(variantDependencies.libraries.values),
-        nativeModule = nativeModule?.let { module ->
-          NativeModuleModel(
-              name = module.name,
-              nativeBuildSystem = module.nativeBuildSystem.name,
-              ndkVersion = module.ndkVersion,
-              defaultNdkVersion = module.defaultNdkVersion,
-              externalNativeBuildFile = module.externalNativeBuildFile,
-              variants =
-                  module.variants.map { variant ->
-                    NativeVariantModel(
-                        name = variant.name,
-                        abis =
-                            variant.abis.map { abi ->
-                              NativeAbiModel(
-                                  name = abi.name,
-                                  sourceFlagsFile = abi.sourceFlagsFile,
-                                  symbolFolderIndexFile = abi.symbolFolderIndexFile,
-                                  buildFileIndexFile = abi.buildFileIndexFile,
-                                  additionalProjectFilesIndexFile = abi.additionalProjectFilesIndexFile,
-                              )
-                            },
-                    )
-                  },
-          )
-        },
     )
   }
 
@@ -479,7 +455,7 @@ internal class AndroidProjectImpl(
 
     val genericPattern =
         Pattern.compile(
-            "(<[a-zA-Z0-9._:-]+(?:\s+[^>]*)?>|[a-zA-Z0-9._:-]+#[a-zA-Z0-9._:-]+).*?(ADDED|MERGED|REPLACED|REMOVED) from (.+?)(?:\n|$)",
+            "(<[a-zA-Z0-9._:-]+(?:\\s+[^>]*)?>|[a-zA-Z0-9._:-]+#[a-zA-Z0-9._:-]+).*?(ADDED|MERGED|REPLACED|REMOVED) from (.+?)(?:\\n|$)",
             Pattern.DOTALL,
         )
     val genericMatcher = genericPattern.matcher(text)
@@ -503,29 +479,6 @@ internal class AndroidProjectImpl(
         mergedPermissions = mergedPermissions,
         blameEntries = blameEntries,
     )
-  }
-
-  private fun parseManifestMergerReport(variantName: String): ManifestMergerReport? {
-    val report =
-        File(
-            gradleProject.buildDirectory,
-            "outputs/logs/manifest-merger-$variantName-report.txt",
-        )
-    if (!report.exists()) return null
-    val text = report.readText()
-    val permissionPattern =
-        Pattern.compile("uses-permission#([a-zA-Z0-9_.]+).*?ADDED from (.+?)(?:\\n|$)")
-    val matcher = permissionPattern.matcher(text)
-    val merged = mutableListOf<MergedPermissionSource>()
-    while (matcher.find()) {
-      merged.add(
-          MergedPermissionSource(
-              permission = matcher.group(1),
-              source = matcher.group(2).trim(),
-          )
-      )
-    }
-    return ManifestMergerReport(report, merged)
   }
 
   override fun getBootClasspaths(): CompletableFuture<Collection<File>> {
@@ -615,7 +568,7 @@ internal class AndroidProjectImpl(
           androidProject.viewBindingOptions?.let(AndroidModulePropertyCopier::copy)
               ?: DefaultViewBindingOptions()
 
-      return@supplyAsync AndroidProjectMetadata(
+      AndroidProjectMetadata(
           gradleMetadata,
           basicAndroidProject.projectType,
           copy(androidProject.flags),
@@ -630,7 +583,7 @@ internal class AndroidProjectImpl(
           computeProjectSnapshot(),
           getClassesJar(),
       )
-          .also { metadata -> publishModelDerivedEvents(metadata.modelSnapshot) }
+          .also { metadata -> metadata.modelSnapshot?.let(::publishModelDerivedEvents) }
     }
   }
 
@@ -709,7 +662,7 @@ internal class AndroidProjectImpl(
               dimension = it.dimension,
               minSdkVersion = it.minSdkVersion?.apiLevel,
               targetSdkVersion = it.targetSdkVersion?.apiLevel,
-              resourceConfigurations = it.resourceConfigurations,
+              resourceConfigurations = it.resourceConfigurations.toList(),
           )
         }
 
@@ -750,16 +703,7 @@ internal class AndroidProjectImpl(
                       clearOnSwitchGeneratedSources =
                           artifactMetadata.generatedSourceFolders.toList(),
                       clearOnSwitchSourceDirectories =
-                          basicAndroidProject.sourceSets
-                              .filterNot { it.name == variant.name }
-                              .flatMap { candidate ->
-                                candidate.javaDirectories +
-                                    candidate.kotlinDirectories +
-                                    candidate.resourcesDirectories +
-                                    candidate.resDirectories +
-                                    candidate.assetsDirectories
-                              }
-                              .distinct(),
+                          sourceProviderDirectoriesExcept(variant.name),
                   )
             },
         resolvedProjectVariants = resolvedProjectVariants,
@@ -877,4 +821,42 @@ internal class AndroidProjectImpl(
       ""
     }
   }
+
+
+  private fun sourceProviderForVariant(variantName: String) =
+      basicAndroidProject.variants.firstOrNull { it.name == variantName }?.mainArtifact?.variantSourceProvider
+
+  private fun sourceProviderDirectoriesExcept(activeVariantName: String): List<File> =
+      basicAndroidProject.variants
+          .filterNot { it.name == activeVariantName }
+          .flatMap { it.mainArtifact.variantSourceProvider?.allDirectories().orEmpty() }
+          .distinct()
+
+  private fun com.android.builder.model.v2.ide.SourceProvider.allDirectories(): List<File> =
+      javaDirectories +
+          kotlinDirectories +
+          resourcesDirectories +
+          (resDirectories ?: emptyList()) +
+          (assetsDirectories ?: emptyList())
+
+  private fun com.android.builder.model.v2.ide.ArtifactDependencies.toAdjacency(): ArtifactDependencyAdjacencyModel =
+      ArtifactDependencyAdjacencyModel(
+          compile = compileDependencies.map { GraphNodeModel(it.key, null, it.dependencies.map { dep -> dep.key }) },
+          runtime = runtimeDependencies?.map { GraphNodeModel(it.key, null, it.dependencies.map { dep -> dep.key }) } ?: emptyList(),
+      )
+
+  private fun com.android.builder.model.v2.ide.ArtifactDependenciesAdjacencyList.toAdjacencyList(): ArtifactDependencyAdjacencyListModel =
+      ArtifactDependencyAdjacencyListModel(
+          compile = ArtifactDependenciesAdjacencyListModel(edges = compileDependencies.map { DependencyEdgeModel(it.from, it.to) }),
+          runtime = ArtifactDependenciesAdjacencyListModel(edges = runtimeDependencies?.map { DependencyEdgeModel(it.from, it.to) } ?: emptyList()),
+      )
+
+  private fun com.android.builder.model.v2.ide.ArtifactDependenciesAdjacencyList.toAdjacencyEdges(): ArtifactDependenciesAdjacencyListModel =
+      ArtifactDependenciesAdjacencyListModel(
+          edges =
+              (compileDependencies + (runtimeDependencies ?: emptyList()))
+                  .map { DependencyEdgeModel(it.from, it.to) }
+                  .distinct(),
+      )
+
 }
